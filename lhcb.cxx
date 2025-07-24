@@ -32,7 +32,6 @@ static AnalysisTime_t analysis(ROOT::RDataFrame &frame, const std::string &histo
   auto fn_muon_cut_and_stopwatch = [&](unsigned int slot, ULong64_t entry,
                                        int is_muon) {
     if (entry == 0) {
-      std::cout << "starting timer" << std::endl;
       ts_first = std::chrono::steady_clock::now();
     }
     return !is_muon;
