@@ -18,7 +18,7 @@ def convert(dataset_name, input_path, output_path):
 
     for colname in colnames:
         new_typename = rdf.GetColumnType(colname).replace("std::uint_", "std::int_")
-        rdf_converted = rdf_converted.Redefine(colname, f"({typename[1:]})({colname})")
+        rdf_converted = rdf_converted.Redefine(colname, f"({new_typename})({colname})")
 
     opts = ROOT.RDF.RSnapshotOptions()
     opts.fCompressionAlgorithm = ROOT.RCompressionSetting.EAlgorithm.kZSTD
