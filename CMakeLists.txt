@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.25)
 project(RNTupleFmtBench)
 
 find_package(ROOT 6.36 CONFIG REQUIRED)
+message(${ROOT_INCLUDE_DIRS})
 find_package(Arrow REQUIRED)
 find_package(Parquet REQUIRED)
 
