@@ -3,7 +3,7 @@
 set -e
 
 DATA_DIR=./data/
-RESULTS_DIR=./results/
+RESULTS_DIR=./results/direct/
 BENCHMARK_FORMATS="root orc parquet"
 N_RUNS=5
 
@@ -28,4 +28,4 @@ function run() {
 }
 
 run lhcb B2HHH
-run cms DoubleMuon_signed
+run cms ttjet_signed

@@ -1,5 +1,6 @@
 from bz2 import compress
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 import argparse
 import pandas as pd
 import os
@@ -12,6 +13,7 @@ plt.rcParams.update(
     {
         "font.family": "sans-serif",
         "text.usetex": True,
+        "axes.autolimit_mode": "round_numbers"
     }
 )
 
@@ -21,11 +23,13 @@ DATA_SET_NAMES = {
     "lhcb": "DecayTree",
 }
 DATA_SET_FILE_NAMES = {
-    "cms": "DoubleMuon_signed",
+    # "cms": "DoubleMuon_signed",
+    "cms": "ttjet_trimmed",
     "lhcb": "B2HHH",
 }
 N_EVENTS = {
-    "cms": 39668813,
+    # "cms": 39668813,
+    "cms": 1620657,
     "lhcb": 8556118,
 }
 
@@ -84,8 +88,8 @@ def get_filesize(benchmark, fmt, uncompressed=False):
 
 
 def plot_filesize(benchmark):
-    filesizes = [get_filesize(args.benchmark, fmt) for fmt in FORMATS]
-    fig, ax = plt.subplots(figsize=(3, 4))
+    filesizes = [get_filesize(benchmark, fmt) / 1e9 for fmt in FORMATS]
+    fig, ax = plt.subplots(figsize=(3, 2.5))
 
     ax.bar(
         ["ORC", "Parquet", "RNTuple"],
@@ -94,30 +98,46 @@ def plot_filesize(benchmark):
     )
 
     ax.set_xlabel("Data format")
-    ax.set_ylabel("File size (B)")
+    ax.set_ylabel("File size (GB)")
+    # ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+    ax.set_ylim(0, 1.25 if benchmark == "lhcb" else 4)
 
     fig.savefig(f"output/filesize_{benchmark}.png", bbox_inches="tight")
     fig.savefig(f"output/filesize_{benchmark}.pdf", bbox_inches="tight")
 
 
 def plot_event_size(benchmark):
-    event_sizes = [
-        get_event_size_orc(benchmark),
-        get_event_size_parquet(benchmark),
-        get_event_size_rntuple(benchmark)
-    ]
-    fig, ax = plt.subplots(figsize=(3, 4))
+    # event_sizes = [
+    #     get_event_size_orc(benchmark),
+    #     get_event_size_parquet(benchmark),
+    #     get_event_size_rntuple(benchmark)
+    # ]
+    event_sizes = [get_filesize(benchmark, f) / N_EVENTS[benchmark] for f in ["orc", "parquet", "root"]]
+    fig, ax = plt.subplots(figsize=(3, 2.5))
 
-    ax.bar(
+    bar_plot = ax.bar(
         ["ORC", "Parquet", "RNTuple"],
         event_sizes,
         color=["tab:red", "tab:blue", "tab:orange"],
     )
 
-    ax.set_xlabel("Data format")
-    ax.set_ylabel("Event size (B)")
+    ax.bar_label(
+        bar_plot,
+        labels=[
+            f"{event_sizes[0] / event_sizes[-1]:.2f}x",
+            f"{event_sizes[1] / event_sizes[-1]:.2f}x",
+            "",
+        ],
+        padding=-20,
+        color="white",
+        size=14,
+    )
 
-    ax.set_ylim(0, 160 if benchmark=="lhcb" else 30)
+    ax.set_xlabel("Data format", fontdict={"size": 14})
+    ax.set_ylabel("Average event size (B)", fontdict={"size": 14})
+    ax.tick_params(axis='both', which='major', labelsize=12)
+
+    # ax.set_ylim(0, 160 if benchmark=="lhcb" else 30)
 
     fig.savefig(f"output/event_size_{benchmark}.png", bbox_inches="tight")
     fig.savefig(f"output/event_size_{benchmark}.pdf", bbox_inches="tight")
@@ -132,7 +152,7 @@ def plot_compression_factor(benchmark):
     for c in compression_factors:
         print(c)
 
-    fig, ax = plt.subplots(figsize=(3, 4))
+    fig, ax = plt.subplots(figsize=(3, 2.5))
 
     ax.bar(
         ["ORC", "Parquet", "RNTuple"],
@@ -147,13 +167,10 @@ def plot_compression_factor(benchmark):
     fig.savefig(f"output/compression_factor_{benchmark}.pdf", bbox_inches="tight")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        prog="plot_storage", description="plot the benchmark runtimes"
-    )
-    parser.add_argument(
-        "benchmark", choices=["cms", "lhcb"], help="name of the benchmark"
-    )
-    args = parser.parse_args()
-    plot_filesize(args.benchmark)
-    plot_event_size(args.benchmark)
-    plot_compression_factor(args.benchmark)
+    plot_filesize("cms")
+    plot_event_size("cms")
+    # plot_compression_factor("cms")
+
+    plot_filesize("lhcb")
+    plot_event_size("lhcb")
+    # plot_compression_factor("lhcb")
