@@ -10,6 +10,7 @@
 
 #include <arrow/io/api.h>
 #include <parquet/arrow/reader.h>
+#include <arrow/adapters/orc/adapter.h>
 
 #include <chrono>
 #include <iostream>
@@ -17,11 +18,115 @@
 
 #include "util.hxx"
 
+const std::vector<std::string> columnNames = {
+  "nMuon",
+  "Muon_charge",
+  "Muon_pt",
+  "Muon_eta",
+  "Muon_phi",
+  "Muon_mass"
+};
+
+static AnalysisTime_t analysis_orc(const std::string &path,
+                                   const std::string &histo_path) {
+  auto ts_init = std::chrono::steady_clock::now();
+
+  auto hMass =
+      std::make_unique<TH1D>("Dimuon_mass", "Dimuon_mass", 2000, 0.25, 300);
+
+  arrow::MemoryPool *pool = arrow::default_memory_pool();
+  auto localFile = arrow::io::ReadableFile::Open(path, pool).ValueOrDie();
+  auto reader = arrow::adapters::orc::ORCFileReader::Open(localFile, pool).ValueOrDie();
+
+  auto schema = reader->ReadSchema().ValueOrDie();
+  auto nStripes = reader->NumberOfStripes();
+  std::shared_ptr<arrow::RecordBatch> recordBatch;
+
+  std::chrono::steady_clock::time_point ts_first =
+      std::chrono::steady_clock::now();
+
+  for (std::int64_t stripe = 0; stripe < nStripes; ++stripe) {
+    recordBatch = reader->ReadStripe(stripe, columnNames).ValueOrDie();
+
+    auto nMuonArr = std::static_pointer_cast<arrow::Int32Array>(
+        recordBatch->GetColumnByName("nMuon"));
+    auto muonChargeArr = std::static_pointer_cast<arrow::ListArray>(
+        recordBatch->GetColumnByName("Muon_charge"));
+    auto muonPtArr = std::static_pointer_cast<arrow::ListArray>(
+        recordBatch->GetColumnByName("Muon_pt"));
+    auto muonEtaArr = std::static_pointer_cast<arrow::ListArray>(
+        recordBatch->GetColumnByName("Muon_eta"));
+    auto muonPhiArr = std::static_pointer_cast<arrow::ListArray>(
+        recordBatch->GetColumnByName("Muon_phi"));
+    auto muonMassArr = std::static_pointer_cast<arrow::ListArray>(
+        recordBatch->GetColumnByName("Muon_mass"));
+
+      std::shared_ptr<arrow::Int32Array> nMuonsArray;
+      auto rawNMuonVals = nMuonArr->raw_values();
+      ROOT::RVec<std::int32_t> nMuons(rawNMuonVals,
+                                      rawNMuonVals + nMuonArr->length());
+
+      ROOT::RVec<std::int32_t> muonCharge;
+      ROOT::RVec<float> muonPt, muonEta, muonPhi, muonMass;
+
+      for (std::int64_t entryId = 0; entryId < recordBatch->num_rows(); ++entryId) {
+        if (nMuons[entryId] != 2)
+          continue;
+
+        fill_vector_from_arrow(entryId, *muonChargeArr, muonCharge);
+
+        if (muonCharge[0] == muonCharge[1]) {
+          continue;
+        }
+
+        fill_vector_from_arrow(entryId, *muonPtArr, muonPt);
+        fill_vector_from_arrow(entryId, *muonEtaArr, muonEta);
+        fill_vector_from_arrow(entryId, *muonPhiArr, muonPhi);
+        fill_vector_from_arrow(entryId, *muonMassArr, muonMass);
+
+        float x_sum = 0.;
+        float y_sum = 0.;
+        float z_sum = 0.;
+        float e_sum = 0.;
+        for (std::size_t i = 0u; i < 2; ++i) {
+          // Convert to (e, x, y, z) coordinate system and update sums
+          const auto x = muonPt[i] * std::cos(muonPhi[i]);
+          x_sum += x;
+          const auto y = muonPt[i] * std::sin(muonPhi[i]);
+          y_sum += y;
+          const auto z = muonPt[i] * std::sinh(muonEta[i]);
+          z_sum += z;
+          const auto e =
+              std::sqrt(x * x + y * y + z * z + muonMass[i] * muonMass[i]);
+          e_sum += e;
+        }
+        // Return invariant mass with (+, -, -, -) metric
+        auto fmass = std::sqrt(e_sum * e_sum - x_sum * x_sum - y_sum * y_sum -
+                               z_sum * z_sum);
+        hMass->Fill(fmass);
+      }
+  }
+
+  auto ts_end = std::chrono::steady_clock::now();
+  auto runtime_init =
+      std::chrono::duration_cast<std::chrono::microseconds>(ts_first - ts_init)
+          .count();
+  auto runtime_analyze =
+      std::chrono::duration_cast<std::chrono::microseconds>(ts_end - ts_first)
+          .count();
+
+  if (!histo_path.empty())
+    save_histogram(hMass.get(), histo_path);
+
+  return std::make_pair(runtime_init, runtime_analyze);
+}
+
 static AnalysisTime_t analysis_parquet(const std::string &path,
                                        const std::string &histo_path) {
   auto ts_init = std::chrono::steady_clock::now();
 
-  auto hMass = std::make_unique<TH1D>("Dimuon_mass", "Dimuon_mass", 2000, 0.25, 300);
+  auto hMass =
+      std::make_unique<TH1D>("Dimuon_mass", "Dimuon_mass", 2000, 0.25, 300);
 
   arrow::Status st;
   arrow::MemoryPool *pool = arrow::default_memory_pool();
@@ -45,12 +150,9 @@ static AnalysisTime_t analysis_parquet(const std::string &path,
   }
 
   std::vector<std::int32_t> columns;
-  columns.emplace_back(schema->GetFieldIndex("nMuon"));
-  columns.emplace_back(schema->GetFieldIndex("Muon_charge"));
-  columns.emplace_back(schema->GetFieldIndex("Muon_pt"));
-  columns.emplace_back(schema->GetFieldIndex("Muon_eta"));
-  columns.emplace_back(schema->GetFieldIndex("Muon_phi"));
-  columns.emplace_back(schema->GetFieldIndex("Muon_mass"));
+  for (const auto colName : columnNames) {
+    columns.emplace_back(schema->GetFieldIndex(colName));
+  }
 
   std::chrono::steady_clock::time_point ts_first =
       std::chrono::steady_clock::now();
@@ -66,22 +168,27 @@ static AnalysisTime_t analysis_parquet(const std::string &path,
     assert(table->GetColumnByName("Muon_phi")->num_chunks() == 1);
     assert(table->GetColumnByName("Muon_mass")->num_chunks() == 1);
 
-    auto nMuonArr = std::static_pointer_cast<arrow::Int32Array>(table->GetColumnByName("nMuon")->chunk(0));
-    auto muonChargeArr = std::static_pointer_cast<arrow::ListArray>(table->GetColumnByName("Muon_charge")->chunk(0));
-    auto muonPtArr = std::static_pointer_cast<arrow::ListArray>(table->GetColumnByName("Muon_pt")->chunk(0));
-    auto muonEtaArr = std::static_pointer_cast<arrow::ListArray>(table->GetColumnByName("Muon_eta")->chunk(0));
-    auto muonPhiArr = std::static_pointer_cast<arrow::ListArray>(table->GetColumnByName("Muon_phi")->chunk(0));
-    auto muonMassArr = std::static_pointer_cast<arrow::ListArray>(table->GetColumnByName("Muon_mass")->chunk(0));
+    auto nMuonArr = std::static_pointer_cast<arrow::Int32Array>(
+        table->GetColumnByName("nMuon")->chunk(0));
+    auto muonChargeArr = std::static_pointer_cast<arrow::ListArray>(
+        table->GetColumnByName("Muon_charge")->chunk(0));
+    auto muonPtArr = std::static_pointer_cast<arrow::ListArray>(
+        table->GetColumnByName("Muon_pt")->chunk(0));
+    auto muonEtaArr = std::static_pointer_cast<arrow::ListArray>(
+        table->GetColumnByName("Muon_eta")->chunk(0));
+    auto muonPhiArr = std::static_pointer_cast<arrow::ListArray>(
+        table->GetColumnByName("Muon_phi")->chunk(0));
+    auto muonMassArr = std::static_pointer_cast<arrow::ListArray>(
+        table->GetColumnByName("Muon_mass")->chunk(0));
 
-    std::shared_ptr<arrow::Int32Array> nMuonsArray;
     auto rawNMuonVals = nMuonArr->raw_values();
-    ROOT::RVec<std::int32_t> nMuons(rawNMuonVals, rawNMuonVals + nMuonArr->length());
+    ROOT::RVec<std::int32_t> nMuons(rawNMuonVals,
+                                    rawNMuonVals + nMuonArr->length());
 
     ROOT::RVec<std::int32_t> muonCharge;
     ROOT::RVec<float> muonPt, muonEta, muonPhi, muonMass;
 
-
-    for (int64_t entryId = 0; entryId < table->num_rows(); ++entryId) {
+    for (std::int64_t entryId = 0; entryId < table->num_rows(); ++entryId) {
       if (nMuons[entryId] != 2)
         continue;
 
@@ -108,7 +215,8 @@ static AnalysisTime_t analysis_parquet(const std::string &path,
         y_sum += y;
         const auto z = muonPt[i] * std::sinh(muonEta[i]);
         z_sum += z;
-        const auto e = std::sqrt(x * x + y * y + z * z + muonMass[i] * muonMass[i]);
+        const auto e =
+            std::sqrt(x * x + y * y + z * z + muonMass[i] * muonMass[i]);
         e_sum += e;
       }
       // Return invariant mass with (+, -, -, -) metric
@@ -136,13 +244,14 @@ static AnalysisTime_t analysis_rntuple(std::string_view ntuple_path,
                                        const std::string &histo_path) {
   auto ts_init = std::chrono::steady_clock::now();
 
-  auto ntuple =
-      ROOT::RNTupleReader::Open("Events", ntuple_path);
+  auto ntuple = ROOT::RNTupleReader::Open("Events", ntuple_path);
 
-  auto hMass = std::make_unique<TH1D>("Dimuon_mass", "Dimuon_mass", 2000, 0.25, 300);
+  auto hMass =
+      std::make_unique<TH1D>("Dimuon_mass", "Dimuon_mass", 2000, 0.25, 300);
 
   auto viewNMuon = ntuple->GetView<std::int32_t>("nMuon");
-  auto viewMuonCharge = ntuple->GetView<ROOT::RVec<std::int32_t>>("Muon_charge");
+  auto viewMuonCharge =
+      ntuple->GetView<ROOT::RVec<std::int32_t>>("Muon_charge");
   auto viewMuonPt = ntuple->GetView<ROOT::RVec<float>>("Muon_pt");
   auto viewMuonEta = ntuple->GetView<ROOT::RVec<float>>("Muon_eta");
   auto viewMuonPhi = ntuple->GetView<ROOT::RVec<float>>("Muon_phi");
@@ -267,13 +376,9 @@ int main(int argc, char **argv) {
     break;
   }
   case FileFormat::orc: {
-    std::shared_ptr<arrow::Table> table = open_arrow(input_path, fmt);
-    auto colNames = get_column_names(basename);
-    auto df = ROOT::RDF::FromArrow(table, colNames);
-    auto desc = df.Describe();
-    desc.Print();
-    runtime_analysis = analysis_rdf(df, histo_path);
-  } break;
+    runtime_analysis = analysis_orc(input_path, histo_path);
+    break;
+  }
   default:
     std::cerr << "Invalid file format: " << suffix << std::endl;
     return 1;

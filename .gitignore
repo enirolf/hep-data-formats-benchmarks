@@ -7,3 +7,6 @@ results/
 lhcb
 cms
 clear_page_cache
+
+*.svg
+*.out
