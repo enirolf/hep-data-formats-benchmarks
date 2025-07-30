@@ -1,11 +1,10 @@
 awkward==2.8.5
 awkward_cpp==47
-click==8.2.1
 fsspec==2025.7.0
 joblib==1.5.1
-matplotlib==3.10
+matplotlib==3.9
 nltk==3.9.1
-numpy==2.3.1
+numpy==2.0.2
 packaging==25.0
 pandas==2.3.1
 pyarrow==18.0.0
@@ -15,3 +14,4 @@ regex==2024.11.6
 six==1.17.0
 tqdm==4.67.1
 tzdata==2025.2
+pytest==8.4.1
