@@ -17,7 +17,13 @@ def convert(dataset_name, input_path, output_path):
     rdf_converted = rdf
 
     for colname in colnames:
-        new_typename = rdf.GetColumnType(colname).replace("std::uint_", "std::int_")
+        old_typename = rdf.GetColumnType(colname)
+        new_typename = (
+            old_typename.replace("std::uint_", "std::int_")
+            .replace("UInt_t", "std::int32_t")
+            .replace("UChar_t", "std::int8_t")
+            .replace("ULong64_t", "std::int64_t")
+        )
         rdf_converted = rdf_converted.Redefine(colname, f"({new_typename})({colname})")
 
     opts = ROOT.RDF.RSnapshotOptions()
