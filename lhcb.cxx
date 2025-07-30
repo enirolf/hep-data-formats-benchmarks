@@ -167,7 +167,6 @@ static AnalysisTime_t analysis_orc(const std::string &path,
                                           rawH3ProbPi + arrH3ProbPi->length());
 
     for (std::int64_t entryId = 0; entryId < recordBatch->num_rows(); ++entryId) {
-
       if (valsH1IsMuon[entryId] || valsH2IsMuon[entryId] ||
           valsH3IsMuon[entryId]) {
         continue;
@@ -432,9 +431,6 @@ static AnalysisTime_t analysis_rntuple(const std::string &path,
   std::chrono::steady_clock::time_point ts_first =
       std::chrono::steady_clock::now();
   for (auto i : ntuple->GetEntryRange()) {
-    if (i > 1000)
-      break;
-
     if (viewH1IsMuon(i) || viewH2IsMuon(i) || viewH3IsMuon(i)) {
       continue;
     }
