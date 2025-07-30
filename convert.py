@@ -1,3 +1,4 @@
+from pyarrow.tests.test_flight import MultiHeaderServerMiddlewareFactory
 import ROOT
 import awkward as ak
 from pyarrow import orc
@@ -15,19 +16,19 @@ def read_as_ak(dataset_name, dataset_path):
     return ak_array
 
 
-def convert2orc(ak_array, output_name, uncompressed):
+def convert2orc(ak_array, output_name, events_per_cluster, uncompressed=False, mirror_rntuple_settings=False):
     compression = "UNCOMPRESSED" if uncompressed else "ZSTD"
     arrow_table = ak.to_arrow_table(ak_array, extensionarray=False)
     orc.write_table(
         arrow_table,
         output_name,
         compression=compression,
-        compression_block_size=1024 * 1024,
-        stripe_size=1024 * 1024 * 128,
+        compression_block_size=1024 * 1024 if mirror_rntuple_settings else 64 * 1024,
+        stripe_size=events_per_cluster if mirror_rntuple_settings else 64 * 1024 * 1024
     )
 
 
-def convert2parquet(ak_array, output_name, uncompressed):
+def convert2parquet(ak_array, output_name, events_per_cluster, uncompressed=False, mirror_rntuple_settings=False):
     compression = "NONE" if uncompressed else "ZSTD"
     ak.to_parquet(
         ak_array,
@@ -36,11 +37,12 @@ def convert2parquet(ak_array, output_name, uncompressed):
         compression="NONE" if uncompressed else "ZSTD",
         compression_level=None if uncompressed else 3,
         parquet_metadata_statistics=False,
-        data_page_size=1024 * 1024,
+        data_page_size=1024 * 1024 if mirror_rntuple_settings else None,
+        row_group_size=events_per_cluster if mirror_rntuple_settings else 64 * 1024 * 1024
     )
 
 
-def convert2rntuple(dataset_name, input_path, output_path, uncompressed):
+def convert2rntuple(dataset_name, input_path, output_path, uncompressed=False):
     rdf = ROOT.RDataFrame(dataset_name, input_path)
     opts = ROOT.RDF.RSnapshotOptions()
     opts.fCompressionAlgorithm = ROOT.RCompressionSetting.EAlgorithm.kUndefined if uncompressed else ROOT.RCompressionSetting.EAlgorithm.kZSTD
@@ -71,6 +73,14 @@ if __name__ == "__main__":
         action="store_true",
         help="don't compress the data",
     )
+    parser.add_argument(
+        "-m",
+        "--mirror_rntuple",
+        dest="mirror_rntuple",
+        action="store_true",
+        help="mirror rntuple's write options",
+    )
+
 
     args = parser.parse_args()
 
@@ -79,7 +89,10 @@ if __name__ == "__main__":
         exit(0)
 
     ak_array = read_as_ak(args.dataset_name, args.input_path)
+    ntuple = ROOT.RNTupleReader.Open(args.dataset_name, args.input_path)
+    desc = ntuple.GetDescriptor()
+    events_per_cluster = int(desc.GetNEntries() / desc.GetNClusters())
     if args.output_mode == "orc":
-        convert2orc(ak_array, args.output_path, args.uncompressed)
+        convert2orc(ak_array, args.output_path, args.uncompressed, events_per_cluster)
     if args.output_mode == "parquet":
-        convert2parquet(ak_array, args.output_path, args.uncompressed)
+        convert2parquet(ak_array, args.output_path, args.uncompressed, events_per_cluster)
