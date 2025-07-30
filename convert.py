@@ -8,9 +8,6 @@ import argparse
 
 def read_as_ak(dataset_name, dataset_path):
     rdf = ROOT.RDataFrame(dataset_name, dataset_path)
-    desc = rdf.Describe()
-    desc.Print()
-
     colnames = [str(colname) for colname in rdf.GetColumnNames()]
     ak_array = ak.from_rdataframe(rdf, colnames)
     return ak_array
@@ -81,8 +78,11 @@ if __name__ == "__main__":
         help="mirror rntuple's write options",
     )
 
-
     args = parser.parse_args()
+
+    print(
+        f"converting {args.dataset_name} from {args.input_path} to {args.output_path} (target format: {args.output_mode}, using rntuple write opts: {args.mirror_rntuple}, uncompressed: {args.uncompressed})"
+    )
 
     if args.output_mode == "rntuple":
         convert2rntuple(args.dataset_name, args.input_path, args.output_path, args.uncompressed)
@@ -93,6 +93,20 @@ if __name__ == "__main__":
     desc = ntuple.GetDescriptor()
     events_per_cluster = int(desc.GetNEntries() / desc.GetNClusters())
     if args.output_mode == "orc":
-        convert2orc(ak_array, args.output_path, args.uncompressed, events_per_cluster)
+        convert2orc(
+            ak_array,
+            args.output_path,
+            events_per_cluster,
+            uncompressed=args.uncompressed,
+            mirror_rntuple_settings=args.mirror_rntuple,
+        )
     if args.output_mode == "parquet":
-        convert2parquet(ak_array, args.output_path, args.uncompressed, events_per_cluster)
+        convert2parquet(
+            ak_array,
+            args.output_path,
+            events_per_cluster,
+            uncompressed=args.uncompressed,
+            mirror_rntuple_settings=args.mirror_rntuple,
+        )
+
+    print("---> done!")
