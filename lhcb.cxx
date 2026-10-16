@@ -30,26 +30,18 @@ static double GetKE(double px, double py, double pz) {
 }
 
 const std::vector<std::string> columnNames = {
-    "B_FlightDistance",
-    "B_VertexChi2",
-    "H1_Charge",
-    "H1_IpChi2",
     "H1_PX",
     "H1_PY",
     "H1_PZ",
     "H1_ProbK",
     "H1_ProbPi",
     "H1_isMuon",
-    "H2_Charge",
-    "H2_IpChi2",
     "H2_PX",
     "H2_PY",
     "H2_PZ",
     "H2_ProbK",
     "H2_ProbPi",
     "H2_isMuon",
-    "H3_Charge",
-    "H3_IpChi2",
     "H3_PX",
     "H3_PY",
     "H3_PZ",
@@ -253,8 +245,7 @@ static AnalysisTime_t analysis_parquet(const std::string &path,
       std::chrono::steady_clock::now();
 
   for (std::int32_t row_group = 0; row_group < n_row_groups; ++row_group) {
-    auto st = reader->ReadRowGroup(row_group, columns, &table);
-    assert(st.ok());
+    PARQUET_ASSIGN_OR_THROW(auto table, reader->ReadRowGroup(row_group, columns));
 
     auto arrH1IsMuon = std::static_pointer_cast<arrow::Int32Array>(
         table->GetColumnByName("H1_isMuon")->chunk(0));
@@ -405,27 +396,27 @@ static AnalysisTime_t analysis_rntuple(const std::string &path,
 
   auto ntuple = ROOT::RNTupleReader::Open("DecayTree", path);
 
-  auto viewH1IsMuon = ntuple->GetView<int>("H1_isMuon");
-  auto viewH2IsMuon = ntuple->GetView<int>("H2_isMuon");
-  auto viewH3IsMuon = ntuple->GetView<int>("H3_isMuon");
+  auto viewH1IsMuon = ntuple->GetDirectAccessView<int>("H1_isMuon");
+  auto viewH2IsMuon = ntuple->GetDirectAccessView<int>("H2_isMuon");
+  auto viewH3IsMuon = ntuple->GetDirectAccessView<int>("H3_isMuon");
 
-  auto viewH1PX = ntuple->GetView<double>("H1_PX");
-  auto viewH1PY = ntuple->GetView<double>("H1_PY");
-  auto viewH1PZ = ntuple->GetView<double>("H1_PZ");
-  auto viewH1ProbK = ntuple->GetView<double>("H1_ProbK");
-  auto viewH1ProbPi = ntuple->GetView<double>("H1_ProbPi");
+  auto viewH1PX = ntuple->GetDirectAccessView<double>("H1_PX");
+  auto viewH1PY = ntuple->GetDirectAccessView<double>("H1_PY");
+  auto viewH1PZ = ntuple->GetDirectAccessView<double>("H1_PZ");
+  auto viewH1ProbK = ntuple->GetDirectAccessView<double>("H1_ProbK");
+  auto viewH1ProbPi = ntuple->GetDirectAccessView<double>("H1_ProbPi");
 
-  auto viewH2PX = ntuple->GetView<double>("H2_PX");
-  auto viewH2PY = ntuple->GetView<double>("H2_PY");
-  auto viewH2PZ = ntuple->GetView<double>("H2_PZ");
-  auto viewH2ProbK = ntuple->GetView<double>("H2_ProbK");
-  auto viewH2ProbPi = ntuple->GetView<double>("H2_ProbPi");
+  auto viewH2PX = ntuple->GetDirectAccessView<double>("H2_PX");
+  auto viewH2PY = ntuple->GetDirectAccessView<double>("H2_PY");
+  auto viewH2PZ = ntuple->GetDirectAccessView<double>("H2_PZ");
+  auto viewH2ProbK = ntuple->GetDirectAccessView<double>("H2_ProbK");
+  auto viewH2ProbPi = ntuple->GetDirectAccessView<double>("H2_ProbPi");
 
-  auto viewH3PX = ntuple->GetView<double>("H3_PX");
-  auto viewH3PY = ntuple->GetView<double>("H3_PY");
-  auto viewH3PZ = ntuple->GetView<double>("H3_PZ");
-  auto viewH3ProbK = ntuple->GetView<double>("H3_ProbK");
-  auto viewH3ProbPi = ntuple->GetView<double>("H3_ProbPi");
+  auto viewH3PX = ntuple->GetDirectAccessView<double>("H3_PX");
+  auto viewH3PY = ntuple->GetDirectAccessView<double>("H3_PY");
+  auto viewH3PZ = ntuple->GetDirectAccessView<double>("H3_PZ");
+  auto viewH3ProbK = ntuple->GetDirectAccessView<double>("H3_ProbK");
+  auto viewH3ProbPi = ntuple->GetDirectAccessView<double>("H3_ProbPi");
 
   unsigned nevents = 0;
   std::chrono::steady_clock::time_point ts_first =
